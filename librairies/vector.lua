@@ -28,6 +28,21 @@ local Vector = {
     return _vector
   end,
 
+  newByCoordinates = function(self, x, y)
+
+    local _vector = {}
+
+    setmetatable(_vector, self)
+    self.__index = self
+
+    _vector.x = x
+    _vector.y = y
+    _vector.norm = math.sqrt(math.pow(x, 2)+math.pow(y, 2))
+    _vector.angle = math.radsTodegrees(math.atan2(-y, x))
+
+    return _vector
+  end,
+
   add = function(self, vectorB)
 
     local _newVector = {}
