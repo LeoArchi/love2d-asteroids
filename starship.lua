@@ -45,11 +45,20 @@ local Starship = {
 
   update = function(self, dt)
 
-    -- On update la perte d'énergie naturelle
-    self.energieTimer = self.energieTimer + dt
-    if self.energieTimer >= 1 then
-      self.energieTimer = 0
-      self.energy = self.energy - 1
+    -- On update la perte d'énergie naturelle, seulement si le jeu à commencé
+    if gameStarting then
+      self.energieTimer = self.energieTimer + dt
+      if self.energieTimer >= 1 then
+        self.energieTimer = 0
+        self.energy = self.energy - 1
+      end
+    end
+
+    -- On joue le son d'alarme si la vie est inférieure à 20%
+    if (self.energy / self.maxEnergy) * 100 < 20 and not redAlert.isOn then
+      redAlert.isOn = true
+    elseif (self.energy / self.maxEnergy) * 100 >= 20 and redAlert.isOn then
+      redAlert.isOn = false
     end
 
     -- On update l'invincibilité
@@ -117,10 +126,21 @@ local Starship = {
 
   setInvicibility = function(self)
     self.invincibility.isOn = true
-    self.invincibility.timer = 4
+    self.invincibility.timer = 1.5
   end,
 
   hit = function(self)
+
+    -- On joue le son "joueur touché"
+    local _oof = oof:clone()
+    _oof:play()
+
+    -- Activer la "vibration" de l'écran
+    setShacking()
+
+    -- Activer le clignotement de l'écran
+    setScreenBlink()
+
     self:setInvicibility()
     self.energy = self.energy - 10
   end,

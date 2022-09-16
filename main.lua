@@ -14,24 +14,35 @@ function love.load()
   theme = love.audio.newSource("resources/audio/mars.wav", "stream")
   theme:setLooping(true)
   theme:setVolume(1)
-  theme:play()
 
   piou = love.audio.newSource("resources/audio/piou.wav", "static")
   piou:setVolume(0.1)
 
   intro = love.audio.newSource("resources/audio/intro.wav", "static")
   intro:setVolume(0.8)
-  intro:play()
 
   outro_gameover = love.audio.newSource("resources/audio/gameover.wav", "static")
   outro_gameover:setVolume(0.8)
 
   hit = love.audio.newSource("resources/audio/hit.wav", "static")
   hit:setVolume(0.3)
+
+  oof = love.audio.newSource("resources/audio/oof.wav", "static")
+  oof:setVolume(0.3)
+
   boom = love.audio.newSource("resources/audio/boum.wav", "static")
   boom:setVolume(0.3)
 
+  alarm = love.audio.newSource("resources/audio/alarm.wav", "static")
+  alarm:setLooping(true)
+  alarm:setVolume(0.2)
+
+
   boomAnimation = AnimationUtils:new(love.graphics.newImage("resources/images/explosion.png"), 192, 192, 1)
+
+  -- Polices
+  hudFont = love.graphics.newFont(20)
+  titleFont = love.graphics.newFont(50)
 
   math.randomseed(os.time())
   love.mouse.setVisible(false)
@@ -46,11 +57,26 @@ function love.load()
 
   asteroidsExplosions = {} -- Permet de gérer les animations d'explosion des astéroides indépendament
 
+  -- Controle l'effet de "tremblement de l'écran"
   screenShacking = {
     isShacking = false,
     isLeft = true,
     isRight = false,
     timer = 0
+  }
+
+  -- Controlle l'effet de clignotement de l'écran
+  screenBlinking = {
+    count = 0,
+    isWhite = false,
+    isBlinking = false
+  }
+
+  -- alerte rouge = son alarme + écran rouge
+  redAlert = {
+    isOn = false,
+    screenMaskAlpha = 0,
+    screenMaskDirection = 1
   }
 
   -- étoiles
@@ -62,13 +88,21 @@ function love.load()
   gameStarting = false
   gameStartingCounter = 0
 
-  gameover_sound_isPlayed = false
+  gameover_sound_wasPlayed = false
+
+  titleScreen = true
+  intro_sound_wasPlayed = false
 
 end
 
 function setShacking()
   screenShacking.isShacking = true
   screenShacking.timer = 0.3
+end
+
+function setScreenBlink()
+  screenBlinking.isBlinking = true
+  screenBlinking.count = 5
 end
 
 function setScanlines()
@@ -84,15 +118,112 @@ end
 
 local function oldScreenStencilFunction()
 
-  local strokeHeight = 15
-  local cornerRadius = 20
+  local margin = 50
+  local offset = -1500
 
-  love.graphics.rectangle('fill', strokeHeight, strokeHeight, love.graphics.getWidth()-2*strokeHeight, love.graphics.getHeight()-2*strokeHeight, cornerRadius, cornerRadius, 8 )
+  local rectangle_width = love.graphics.getWidth() - 2*margin
+  local rectangle_height = love.graphics.getHeight() - 2*margin
+
+  local center_x = love.graphics.getWidth()/2
+  local center_y = love.graphics.getHeight()/2
+
+  love.graphics.rectangle('fill', margin, margin, rectangle_width, rectangle_height)
+
+  local horizontal_radius = math.sqrt(math.pow(rectangle_width/2, 2) + math.pow(rectangle_height-offset, 2))
+  local vertical_radius = math.sqrt(math.pow(rectangle_width-offset, 2) + math.pow(rectangle_height/2, 2))
+
+  local horizontal_alpha = math.atan2(rectangle_height-offset, rectangle_width/2)
+  local vertical_alpha = math.atan2(rectangle_height/2, rectangle_width-offset)
+
+  -- ARCS HORIZONTAUX
+
+  -- arc du haut
+  local _x = center_x
+  local _y = center_y + rectangle_height/2 - offset
+
+  love.graphics.arc('fill', 'closed', _x, _y, horizontal_radius, -horizontal_alpha, -math.pi + horizontal_alpha, 64)
+
+  -- arc du bas
+  local _x = center_x
+  local _y = center_y - rectangle_height/2 + offset
+
+  love.graphics.arc('fill', 'closed', _x, _y, horizontal_radius, horizontal_alpha, math.pi - horizontal_alpha, 64)
+
+  -- ARCS VERTICAUX
+
+  -- arc de gauche
+  local _x = center_x + rectangle_width/2 - offset
+  local _y = center_y
+
+  love.graphics.arc('fill', 'closed', _x, _y, vertical_radius, -math.pi + vertical_alpha, -math.pi-vertical_alpha, 64)
+
+  -- arc de droite
+  local _x = center_x - rectangle_width/2 + offset
+  local _y = center_y
+
+  love.graphics.arc('fill', 'closed', _x, _y, vertical_radius, -vertical_alpha, vertical_alpha, 64)
+
 end
 
 function love.update(dt)
 
+  if titleScreen then
+    if love.keyboard.isDown('return') then
+      print('HEY !')
+      titleScreen = false
+    end
+  else
+    if not theme:isPlaying() then
+      theme:play()
+    end
+    if not intro:isPlaying() and not intro_sound_wasPlayed then
+      intro:play()
+      intro_sound_wasPlayed = true
+    end
+  end
+
   if player.energy > 0 and gameStarting then
+
+    -- On gère l'alerte rouge
+    if redAlert.isOn then
+      -- Si l'alarme n'est pas jouée, on lance le son
+      if not alarm:isPlaying() then
+        alarm:play()
+      end
+
+      -- On met à jour l'effet rouge de l'écran
+      if redAlert.screenMaskDirection == -1 then
+        redAlert.screenMaskAlpha = redAlert.screenMaskAlpha - 0.45*dt
+        if redAlert.screenMaskAlpha <=0 then
+          redAlert.screenMaskAlpha = 0
+          redAlert.screenMaskDirection = 1
+        end
+      elseif redAlert.screenMaskDirection == 1 then
+        redAlert.screenMaskAlpha = redAlert.screenMaskAlpha + 0.45*dt
+        if redAlert.screenMaskAlpha >=0.5 then
+          redAlert.screenMaskAlpha = 0.5
+          redAlert.screenMaskDirection = -1
+        end
+      end
+
+    elseif not redAlert.isOn and alarm:isPlaying() then
+      alarm:stop()
+    end
+
+    -- On traite l'effet de clignotement
+    if screenBlinking.isBlinking and screenBlinking.count > 0 then
+
+      screenBlinking.isWhite = not screenBlinking.isWhite -- On inverse la couleur du clignotement
+
+      if screenBlinking.isWhite then
+        screenBlinking.count = screenBlinking.count - 1 -- On décrémente le compteur de clignotement si on est sur une frame blanche
+      end
+
+      if screenBlinking.count == 0 then
+        screenBlinking.isWhite = false -- Dans tout les cas, si le compteur de clignotement atteind 0, on redevient noir
+      end
+
+    end
 
     -- Le nombre max d'astéroide augmente en fonction du score
     nb_max_asteroids = (math.floor(player.score / 2000) + 1) * 5
@@ -179,16 +310,19 @@ function love.update(dt)
       if math.getDistance(currentBonus.position.x,currentBonus.position.y,player.position.x,player.position.y) < currentBonus.radius + player.radius then
 
         if currentBonus.type == 'life' then
-          player.energy = player.maxEnergy
+          player.energy = player.energy + 30
+          if player.energy > player.maxEnergy then
+            player.energy = player.maxEnergy
+          end
         elseif currentBonus.type == 'ammo' then
-          player.max_fire_cooldown = player.max_fire_cooldown * 0.90
+          player.max_fire_cooldown = player.max_fire_cooldown * 0.95
         end
 
         table.remove(allBonus, i)
       end
     end
 
-  elseif not gameStarting then
+  elseif not gameStarting and not titleScreen then
 
     -- Mise à jour du joueur
     player:update(dt)
@@ -205,7 +339,7 @@ function love.update(dt)
 
     gameStartingCounter = gameStartingCounter + dt
     if gameStartingCounter >= 12 then
-      gameStarting = true -- On "démare" le jeu
+      gameStarting = true -- On "démarre" le jeu
 
       -- On initialise les premiers astéroides
       for i=1,nb_max_asteroids do
@@ -214,8 +348,18 @@ function love.update(dt)
       end
 
     end
-  elseif not gameover_sound_isPlayed then
-    gameover_sound_isPlayed = true
+  elseif not gameover_sound_wasPlayed and not titleScreen then
+
+    -- Sintillement des étoiles
+    for i, star in ipairs(stars) do
+      star:update(dt)
+    end
+
+    if alarm:isPlaying() then
+      alarm:stop()
+    end
+
+    gameover_sound_wasPlayed = true
     if not outro_gameover:isPlaying() then
       outro_gameover:play()
     end
@@ -231,27 +375,44 @@ function love.draw()
   -- Only allow rendering on pixels which have a stencil value greater than 0.
   love.graphics.setStencilTest("greater", 0)
 
-  if player.energy > 0 then
+  if titleScreen then
+
     -- Affichage des étoiles
+    love.graphics.setColor(1, 1, 1, 1)
     for i,star in ipairs(stars) do
       star:draw()
     end
 
-
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.print("SCORE : " .. player.score, 20, 20)
 
-    -- On dessine la barre d'énergie
-    local energyBar_width = 200
-    local energyBar_height = 20
 
+    local title_txt = "ASTEROIDS"
+    local startMessage_txt = "Press Enter to start"
+
+    love.graphics.setFont(titleFont)
+    love.graphics.print(title_txt, love.graphics.getWidth()/2 - titleFont:getWidth(title_txt)/2, love.graphics.getHeight()/2 - titleFont:getHeight())
+
+    love.graphics.setFont(hudFont)
+    love.graphics.print(startMessage_txt, love.graphics.getWidth()/2 - hudFont:getWidth(startMessage_txt)/2, love.graphics.getHeight()/2)
+
+    -- Affichage du curseur custom
+    -- Le curseur de visée
+    love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setLineWidth(2)
-    love.graphics.setColor(235/255, 64/255, 52/255, 1)
-    love.graphics.rectangle('fill', 20, 40, player.energy * energyBar_width / player.maxEnergy, energyBar_height)
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.rectangle('line', 20, 40, energyBar_width, energyBar_height)
-    love.graphics.print(player.energy, energyBar_width + 30, 45)
+    love.graphics.circle('line', love.mouse.getX(), love.mouse.getY(), 16, 32)
+    love.graphics.line(love.mouse.getX()-16-5, love.mouse.getY(), love.mouse.getX()-16+5, love.mouse.getY())
+    love.graphics.line(love.mouse.getX()+16-5, love.mouse.getY(), love.mouse.getX()+16+5, love.mouse.getY())
+    love.graphics.line(love.mouse.getX(), love.mouse.getY()-16-5, love.mouse.getX(), love.mouse.getY()-16+5)
+    love.graphics.line(love.mouse.getX(), love.mouse.getY()+16-5, love.mouse.getX(), love.mouse.getY()+16+5)
 
+    -- Affichage des scanlines
+    setScanlines()
+
+  elseif player.energy > 0 then
+    -- Affichage des étoiles
+    for i,star in ipairs(stars) do
+      star:draw()
+    end
 
     love.graphics.setLineWidth(1)
 
@@ -285,6 +446,23 @@ function love.draw()
       projectile:draw()
     end
 
+    -- Affichage du HUD
+    love.graphics.setFont(hudFont)
+
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.print("SCORE : " .. player.score, 60, 60)
+
+    -- On dessine la barre d'énergie
+    local energyBar_width = 200
+    local energyBar_height = 20
+
+    love.graphics.setLineWidth(2)
+    love.graphics.setColor(235/255, 64/255, 52/255, 1)
+    love.graphics.rectangle('fill', 60, 90, player.energy * energyBar_width / player.maxEnergy, energyBar_height)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.rectangle('line', 60, 90, energyBar_width, energyBar_height)
+    love.graphics.print(player.energy .. '%', energyBar_width + 70, 90)
+
     -- Affichage du curseur custom
     -- Le curseur de visée
     love.graphics.setColor(1, 1, 1, 1)
@@ -295,13 +473,42 @@ function love.draw()
     love.graphics.line(love.mouse.getX(), love.mouse.getY()-16-5, love.mouse.getX(), love.mouse.getY()-16+5)
     love.graphics.line(love.mouse.getX(), love.mouse.getY()+16-5, love.mouse.getX(), love.mouse.getY()+16+5)
 
+    -- Affichage de l'effet de clignotement
+    if screenBlinking.isBlinking and screenBlinking.isWhite then
+      love.graphics.setColor(1, 1, 1, 0.5)
+      love.graphics.rectangle('fill', 0, 0, WIDTH, HEIGHT)
+    end
+
+    -- Affichage de l'effet "red alert"
+    if redAlert.isOn then
+      love.graphics.push()
+      love.graphics.setColor(1, 0, 0, redAlert.screenMaskAlpha)
+      love.graphics.rectangle('fill', 0, 0, WIDTH, HEIGHT)
+      love.graphics.pop()
+    end
+
     -- Affichage des scanlines
     setScanlines()
 
   else
+
+    -- Affichage des étoiles
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.print("GAME OVER", 10, 10)
-    love.graphics.print("SCORE : " .. player.score, 10, 25)
+    for i,star in ipairs(stars) do
+      star:draw()
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setFont(titleFont)
+
+    local gameOver_txt = "GAME OVER"
+    local score_txt = "SCORE : " .. player.score
+
+    love.graphics.print(gameOver_txt, love.graphics.getWidth()/2 - titleFont:getWidth(gameOver_txt)/2, love.graphics.getHeight()/2 - titleFont:getHeight())
+    love.graphics.print(score_txt, love.graphics.getWidth()/2 - titleFont:getWidth(score_txt)/2, love.graphics.getHeight()/2)
+
+    -- Affichage des scanlines
+    setScanlines()
   end
 
 end
