@@ -46,7 +46,7 @@ local Starship = {
   update = function(self, dt)
 
     -- On update la perte d'énergie naturelle, seulement si le jeu à commencé
-    if gameStarting then
+    if gameStatus.inGame then
       self.energieTimer = self.energieTimer + dt
       if self.energieTimer >= 1 then
         self.energieTimer = 0
@@ -136,10 +136,10 @@ local Starship = {
     _oof:play()
 
     -- Activer la "vibration" de l'écran
-    setShacking()
+    screenShacking.setScreenShacking()
 
     -- Activer le clignotement de l'écran
-    setScreenBlink()
+    screenBlinking.setScreenBlinkinging()
 
     self:setInvicibility()
     self.energy = self.energy - 10

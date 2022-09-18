@@ -176,7 +176,7 @@ local Asteroid = {
       table.insert(asteroidsExplosions, _explosion)
 
       -- Activer la "vibration" de l'écran
-      setShacking()
+      screenShacking.setScreenShacking()
 
       -- Supprimer l'astéroide parent
       table.remove(asteroids, index)
